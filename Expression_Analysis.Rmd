@@ -2,7 +2,7 @@
 title: "Expression analysis DESeq2"
 author: "Oliver Hölsken"
 date: "7 12 2021"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
