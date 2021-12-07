@@ -9,29 +9,205 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-
 ## Load RDS
 ```{r}
 Expression_data <- readRDS("D:/Google Drive/8_MDS/KW3/Course_MDS/example_KICH.rda")
+```
+
+## Preparing the workspace
+
+### Install Bioconductor
+
+```{r}
+if(!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(version = "3.14")
+```
+
+### Install required BioConductor packages
+
+```{r}
+BiocManager::install(c('DESeq2', 'InteractiveComplexHeatmap', 'glmpca', 'EnhancedVolcano', 'ComplexHeatmap'))
+```
+
+```{r}
+library(BiocManager)
+library(DESeq2)
+library(glmpca)
+library(EnhancedVolcano)
+library(ggplot2)
+library(ggrepel)
+library(genefilter)
+library(openxlsx)
+library(pheatmap)
+library(openxlsx)
+library(ComplexHeatmap)
+```
+
+## Perform Differential expression analysis
+
+### Generate a DESeqData Set
+```{r}
+countMat <- Expression_data$countMat
+ann <- Expression_data$ann
+condition <- ann$condition
+geneMat <- Expression_data$geneMat
+```
+
+```{r}
+###### Excluding low/ none expressed genes
+keep <- rowSums(countMat > 0) >= 3 
+
+# BUILD DESEQ DATA
+dds <- DESeqDataSetFromMatrix(countData = countMat[keep, ],
+                              colData = ann,
+                              design = ~ condition)
+mcols(dds) <- DataFrame(mcols(dds), geneMat[keep, ])
+
+```
+## PCA Analyse
+
+Diese kan mit generalized principal cmponent analyse (GLM-PCA) durchgeführt werden.
+Das Package heißt glmpca.  
+
+```{r}
+gpca <- glmpca(counts(dds), L=2)
+gpca.dat <- gpca$factors
+gpca.dat$condition <- dds$condition
+```
+
+```{r}
+ggplot(gpca.dat, aes(x = dim1, y = dim2, color = condition)) +
+  geom_point(size =2) + coord_fixed() + ggtitle("glmpca - Generalized PCA")
+```
+Die Proben des Normalgewebes (rot) unterscheiden sich voneinander auf der y-Achse (dim2).
+Sie unterscheiden sich vom Tumorgewebe (blau) auf der x-Achse (dim1).
+Eine Probe liegt in der Mitte zwischen beiden Gruppen.
+
+## Perform differential expression analysis
+
+```{r}
+# GET COUNT
+dds <- estimateSizeFactors(dds)
+dds.counts <- counts(dds, normalized=TRUE)
+```
+
+
+```{r}
+# DIFFERENTIAL ANALYSIS
+dds <- DESeq(dds, test = "Wald", fitType = "mean")
+result_dss = results(dds)
+```
+```{r}
+summary(result_dss)
+```
+```{r}
+library(openxlsx)
+# get the output names of the result
+result_dss$entrez_ID <- rownames(result_dss)
+results.deseq2 <- as.data.frame(result_dss)
+```
+
+```{r}
+# Change column names
+colnames(results.deseq2)
+```
+
+```{r}
+# entrezID first column
+results.deseq2 <- results.deseq2[, c(7,1,2,3,4,5,6)]
+```
+
+
+```{r}
+# Order by adjusted p value
+results.deseq2.tmp <- results.deseq2[!is.na(results.deseq2$padj),]
+results.deseq2.sig <- results.deseq2.tmp[results.deseq2.tmp$padj < 0.05,]
+results.deseq2.sig.sort <- results.deseq2.sig[order(results.deseq2.sig$padj, decreasing = F),]
+write.xlsx(results.deseq2.sig.sort, file = "KICH_NormalvsTumor_DESeq.xlsx", asTable = F, firstRow = T, headerStyle = createStyle(textDecoration = 'bold'), keepNA = F, rowNames = F, overwrite = T)
+```
+
+
+```{r}
+# Order by 2 FOLD change
+results.deseq2.sig.up <-  results.deseq2.sig.sort[order(results.deseq2.sig.sort$log2FoldChange
+, decreasing = T),]
+```
+```{r}
+#Upregulated Genes
+results.deseq2.sig.up.2FC <- results.deseq2.sig.up[results.deseq2.sig.up$log2FoldChange > 2,]
+#Downregulated Genes
+results.deseq2.sig.down.2FC.tmp <- results.deseq2.sig.up[results.deseq2.sig.up$log2FoldChange < -2,]
+results.deseq2.sig.down.2FC <- results.deseq2.sig.down.2FC.tmp[order(results.deseq2.sig.down.2FC.tmp$log2FoldChange, decreasing = F),]
+```
+
+```{r}
+#Write xlsx
+write.xlsx(results.deseq2.sig.up.2FC, file = "KICH_NormalvsTumor_DESeq_up.xlsx", asTable = F, firstRow = T, headerStyle = createStyle(textDecoration = 'bold'), keepNA = F, rowNames = F, overwrite = T)
+write.xlsx(results.deseq2.sig.down.2FC , file = "KICH_NormalvsTumor_DESeq_down.xlsx", asTable = F, firstRow = T, headerStyle = createStyle(textDecoration = 'bold'), keepNA = F, rowNames = F, overwrite = T)
+```
+
+
+## Volcano Plot
+
+### Plot basic Volcano Plot
+
+```{r}
+EnhancedVolcano(result_dss,
+    lab = rownames(result_dss),
+    x = 'log2FoldChange',
+    y = 'pvalue')
+```
+
+
+## Heatmap
+
+```{r}
+BiocManager::install('ComplexHeatmap')
+library(ComplexHeatmap)
+```
+Select 20 top upregulated and 20 top downregulated genes
+
+```{r}
+top_up <- results.deseq2.sig.up.2FC[1:20, "entrez_ID"]
+top_down <- results.deseq2.sig.down.2FC[1:20, "entrez_ID"]
+```
+
+
+
+### count normalized
+
+```{r}
+library("pheatmap")
+```
+
+
+
+
+### rlog-transformed 
+
+```{r}
+# get normalized rlogs
+rld <- rlogTransformation(dds, blind=TRUE)
+rlds <- assay(rld)
+```
+
+
+### rlog scaled
+
+
+## Citations
+
+```{r}
+citation("DESeq2")
+citation("InteractiveComplexHeatmap")
+citation("EnhancedVolcano")
+citation("ComplexHeatmap")
+```
+
+## Session info
+
+```{r}
+sessionInfo()
 ```
 
