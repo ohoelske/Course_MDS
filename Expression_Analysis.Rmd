@@ -2,7 +2,7 @@
 title: "RNA-Sequencing Analysis using DESeq2"
 author: "Oliver Hölsken"
 date: "7 12 2021"
-output: github_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
