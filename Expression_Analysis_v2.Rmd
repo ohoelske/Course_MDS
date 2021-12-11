@@ -3,8 +3,8 @@ title: "RNA-Sequencing Analysis using DESeq2"
 author: "Oliver Hölsken"
 date: "11.12.2021"
 output:
-  github_document: default
   html_document: default
+  github_document: default
   pdf_document: default
 ---
 
