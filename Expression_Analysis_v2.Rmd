@@ -1,8 +1,11 @@
 ---
 title: "RNA-Sequencing Analysis using DESeq2"
 author: "Oliver Hölsken"
-date: "7 12 2021"
-output: html_document
+date: "11.12.2021"
+output:
+  github_document: default
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -12,14 +15,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Load RDS
 
 ```{r}
-Expression_data <- readRDS("D:/Google Drive/8_MDS/KW3/Course_MDS/example_KICH.rda")
+Expression_data <- 
+  readRDS("D:/Google Drive/8_MDS/KW3/Course_MDS/example_KICH.rda")
 ```
 
 ## Preparing the workspace
 
 ### Install Bioconductor
 
-```{r}
+```{r, message = FALSE, warning = FALSE}
 if(!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 BiocManager::install(version = "3.14")
@@ -27,22 +31,22 @@ BiocManager::install(version = "3.14")
 
 ### Install required BioConductor packages
 
-```{r}
+```{r, message = FALSE}
 BiocManager::install(c('DESeq2', 'glmpca', 'EnhancedVolcano'))
 ```
 
-```{r}
+```{r, message = FALSE}
 library(BiocManager)
-
 library(ggplot2)
 library(ggrepel)
 library(genefilter)
-
 library(dplyr)
 library(tibble)
 library(readr)
 library(FactoMineR)
 library(tidyr)
+library(tidyverse)
+library(DESeq2)
 ```
 
 ## Perform Differential expression analysis
@@ -61,7 +65,7 @@ library(DESeq2)
 ```
 
 ```{r}
-###### Excluding low/ none expressed genes
+# Excluding low/ none expressed genes
 keep <- rowSums(countMat > 0) >= 3 
 
 # BUILD DESEQ DATA
@@ -104,29 +108,75 @@ gpca.dat <- gpca$factors
 gpca.dat$condition <- dds$condition
 ```
 
-```{r fig.asp = 0.5, fig.width = 12}
-ggplot(gpca.dat, aes(x = dim1, y = dim2, color = condition)) +
-  geom_point(size =2) + coord_fixed() + ggtitle("glmpca - Generalized PCA")
+
+```{r fig.asp = 0.5, fig.width = 9}
+p <- ggplot(gpca.dat, aes(x = dim1, y = dim2, color = condition)) +
+  geom_point(size=3) +
+  xlab("PC1") +
+  ylab("PC2") +
+  coord_fixed() +
+  ggtitle("Principal Component Analysis", subtitle = "read counts [glmpca]")
+
+p + theme(plot.title=element_text(color="black", size=14, face="bold"))
+```
+
+```{r PCA glmpca}
+#Save as PDF
+ggsave(
+  file = "PCA_readcounts.pdf",
+  plot = last_plot(),
+  path = NULL,
+  scale = 1,
+  width = 11.69,
+  height = 8.27,
+  units = "in",
+  dpi = "retina",
+  limitsize = TRUE,
+  bg = NULL,
+)
 ```
 
 Die Proben des Normalgewebes (rot) unterscheiden sich voneinander auf der y-Achse (dim2). Sie unterscheiden sich vom Tumorgewebe (blau) auf der x-Achse (dim1). Eine Probe liegt in der Mitte zwischen beiden Gruppen, es gibt einen outlier bei den Tumor-Samples in dim2.
 
-Die rlog-transformierten Daten können ebenfalls verwendet werden mittels der `plotPCA` Funktion des `FactorMineR` Package:
+Die rlog-transformierten Daten können ebenfalls verwendet werden mittels der `plotPCA` Funktion des `DESeq2` Package:
 
-```{r fig.asp = 0.5, fig.width = 12}
+```{r}
 pcaData <- plotPCA(rld, intgroup=c("condition"), returnData=TRUE)
 percentVar <- round(100 * attr(pcaData, "percentVar"))
+```
 
-ggplot(pcaData, aes(PC1, PC2, color=condition)) +
+```{r fig.asp = 0.5, fig.width = 9}
+p <- ggplot(pcaData, aes(PC1, PC2, color=condition)) +
   geom_point(size=3) +
   xlab(paste0("PC1: ",percentVar[1],"% variance")) +
   ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
-  coord_fixed()
+  coord_fixed() +
+  ggtitle("Principal Component Analysis", subtitle = "rlog-transformed [DESeq2]")
+
+p + theme(plot.title=element_text(color="black", size=14, face="bold"))
 ```
+
+```{r PCA}
+# Save as PDF
+ggsave(
+  file = "PCA_rlog.pdf",
+  plot = last_plot(),
+  path = NULL,
+  scale = 1,
+  width = 11.69,
+  height = 8.27,
+  units = "in",
+  dpi = "retina",
+  limitsize = TRUE,
+  bg = NULL,
+)
+```
+
+
 
 ## Perform differential expression analysis
 
-```{r}
+```{r, message = FALSE}
 # DIFFERENTIAL ANALYSIS
 dds <- DESeq(dds, test = "Wald", fitType = "mean")
 result_dss = results(dds)
@@ -151,7 +201,10 @@ head(results.deseq2)
 
 ```{r}
 #Split both Values in the Gene column to "Gene_Name" and "Entrez_ID".
-results.deseq2 <- separate(results.deseq2, Gene, sep = "__", into = c("Gene_Name", "Entrez_ID"))
+results.deseq2 <- separate(results.deseq2, 
+                           Gene, 
+                           sep = "__", 
+                           into = c("Gene_Name", "Entrez_ID"))
 head(results.deseq2)
 ```
 
@@ -165,45 +218,55 @@ head(results.deseq2)
 # Order results by adjusted p value
 results.deseq2.tmp <- results.deseq2[!is.na(results.deseq2$padj),]
 results.deseq2.sig <- results.deseq2.tmp[which(results.deseq2.tmp$padj < 0.1),]
-results.deseq2.sig.sort <- results.deseq2.sig[order(results.deseq2.sig$padj, decreasing = F),]
+results.deseq2.sig.sort <- results.deseq2.sig[order(results.deseq2.sig$padj, 
+                                                    decreasing = F),]
 head(results.deseq2.sig.sort)
 ```
 
-Generate a xlsx file for all DEG
+Generate a `.xlsx` file for all DEG
 ```{r}
 library(openxlsx)
 ```
 
 ```{r}
 #Write xlsx file
-write.xlsx(results.deseq2.sig.sort, file = "KICH_NormalvsTumor_DESeq.xlsx", asTable = F, firstRow = T, headerStyle = createStyle(textDecoration = 'bold'), keepNA = F, rowNames = F, overwrite = T)
+write.xlsx(results.deseq2.sig.sort, 
+           file = "KICH_NormalvsTumor_DESeq.xlsx", 
+           asTable = F, 
+           firstRow = T, 
+           headerStyle = createStyle(textDecoration = 'bold'), 
+           keepNA = F, 
+           rowNames = F, 
+           overwrite = T)
+```
+
+Determine which genes are up- and down-regulated (log2FC > 0 or < 0, respectively)
+```{r}
+#Upregulated Genes (log2 FC > 0)
+results.deseq2.up <- filter(results.deseq2.sig.sort, log2FoldChange >0) 
+head(results.deseq2.up)
 ```
 
 ```{r}
-# Order values by 2 FOLD change
-results.deseq2.sig.up <-  results.deseq2.sig.sort[order(results.deseq2.sig.sort$log2FoldChange
-, decreasing = T),]
-head(results.deseq2.sig.up)
-```
-
-```{r}
-tail(results.deseq2.sig.up)
-```
-
-Determine which genes are up- and down-regulated (log2FC > 2 or < -2, respectively)
-```{r}
-#Upregulated Genes (2 Fold Change)
-results.deseq2.sig.up.2FC <- results.deseq2.sig.up[results.deseq2.sig.up$log2FoldChange > 2,]
-#Downregulated Genes (-2 Fold Change)
-results.deseq2.sig.down.2FC.tmp <- results.deseq2.sig.up[results.deseq2.sig.up$log2FoldChange < -2,]
-results.deseq2.sig.down.2FC <- results.deseq2.sig.down.2FC.tmp[order(results.deseq2.sig.down.2FC.tmp$log2FoldChange, decreasing = F),]
+#Downregulated genes (log2 FC > 0)
+results.deseq2.down <- filter(results.deseq2.sig.sort, log2FoldChange <0) 
+head(results.deseq2.down)
 ```
 
 Export results
 ```{r}
 #Write xlsx of DEG up- and downregulated (with two sheets)
-list_of_datasets <- list("upregulated" = results.deseq2.sig.up.2FC, "downregulated" = results.deseq2.sig.down.2FC)
-write.xlsx(list_of_datasets, file = "KICH_NormalvsTumor_DESeq_up_down.xlsx", asTable = F, firstRow = T, headerStyle = createStyle(textDecoration = 'bold'), keepNA = F, rowNames = F, overwrite = T)
+list_of_datasets <- list("upregulated" = results.deseq2.up, 
+                         "downregulated" = results.deseq2.down)
+
+write.xlsx(list_of_datasets, 
+           file = "KICH_NormalvsTumor_DESeq_up_down.v2.xlsx", 
+           asTable = F, 
+           firstRow = T, 
+           headerStyle = createStyle(textDecoration = 'bold'), 
+           keepNA = F, 
+           rowNames = F, 
+           overwrite = T)
 ```
 
 ## Volcano Plot
@@ -216,36 +279,52 @@ This was done using the `EnhancedVolcano` Package.
 library(EnhancedVolcano)
 ```
 
-```{r fig.asp = 1.2, fig.width = 12}
+```{r fig.asp = 1, fig.width = 9}
 p <- EnhancedVolcano(results.deseq2,
     lab = results.deseq2$Gene_Name,
     title = 'Normal vs. Tumor DESeq2 results',
     subtitle = "Differential expression",
     pointSize = 2.0,
-    labSize = 4.0,
+    labSize = 3.0,
     FCcutoff = 2.0,
     drawConnectors = TRUE,
     widthConnectors = 0.5,
+    colConnectors = 'black', 
     boxedLabels = TRUE,
     pCutoff = 10e-32,
     labFace = 'bold',
     caption = bquote(~Log[2]~ "fold change cutoff, 2; p-value cutoff, 10e-32"),
     legendPosition = "right",
-    legendLabSize = 14,
+    legendLabSize = 10,
     x = 'log2FoldChange',
-    y = 'pvalue')
+    y = 'pvalue') #+ coord_flip()
 p
 ```
 
+```{r, warning=FALSE}
+#Save as PDF
+ggsave(
+  file = "Volcanoplot.pdf",
+  plot = last_plot(),
+  path = NULL,
+  scale = 1,
+  width = 11.69,
+  height = 8.27,
+  units = "in",
+  dpi = "retina",
+  limitsize = TRUE,
+  bg = NULL,
+)
+```
 
-KCNU1 is highly upregulated in the Tumor samples.
+Ergebnis: KCNU1 is highly upregulated in the Tumor samples.
 
 ## Heatmaps
 
 ### Create a list with top 20 up-and downregulated genes
 ```{r}
 #Create date frame with significant genes (40)
-total_up_down <- rbind(results.deseq2.sig.up.2FC[1:20,], results.deseq2.sig.down.2FC[1:20,])
+total_up_down <- rbind(results.deseq2.up[1:20,],results.deseq2.down[1:20,])
 #Add Gene column (used later to merge with count matrix)
 total_up_down$Gene <- row.names(total_up_down)
 total_up_down <- total_up_down %>% relocate(Gene, .before = Gene_Name)
@@ -264,7 +343,6 @@ colnames(heatmap_norm.df) <- make.unique(names(heatmap_norm.df))
 # add rownames as column
 heatmap_norm.df$Gene <- row.names(heatmap_norm.df)
 heatmap_norm.df <- heatmap_norm.df %>% relocate(Gene, .before = Normal)
-head(heatmap_norm.df)
 ```
 
 #### Merge
@@ -273,48 +351,69 @@ head(heatmap_norm.df)
 # Merge total data frame and heatmap_norm.df by Gene column
 data_frame_merge <- semi_join(heatmap_norm.df, total_up_down, 
                           by = 'Gene', all = F)
-data_frame_merge <- data_frame_merge[-c(1)]
-head(data_frame_merge)
+```
+
+```{r}
+# Only add the Gene Name as Rowname, delete the Entrez ID for better overview
+df <- separate(data_frame_merge, 
+               Gene, 
+               sep="__", 
+               into = c("Gene_Name", "Entrez_ID"))
+data_frame <- df %>% remove_rownames %>% column_to_rownames(var="Gene_Name")
+data_frame_noID <- select(data_frame, select = -c(Entrez_ID))
 ```
 
 #### Visualization
 
 ```{r}
+#Load pheatmap 
 library(pheatmap)
 ```
 
-```{r fig.asp = 1.2, fig.width = 12}
+```{r}
 #Convert to Matrix
-data_frame_merge <- as.matrix(data_frame_merge)
+data_frame_merge <- as.matrix(data_frame_noID)
+```
+
+```{r fig.asp = 1.2, fig.width = 9, fig.align='center'}
 #Plot
 data_frame_merge %>% pheatmap(cluster_cols = F)
 ```
 
 ##### Log2 transformed
 
-```{r fig.asp = 1.2, fig.width = 12}
+```{r}
 ## Log2 tranformation
 heatmap_data_log2 <- data_frame_merge %>% log2()
 # Check if there are any INF values adn remove them
-heatmap_data_log2[is.infinite(heatmap_data_log2)] <- 0 
+heatmap_data_log2[is.infinite(heatmap_data_log2)] <- 0
+```
+
+```{r fig.asp = 1.2, fig.width = 9, fig.align='center'}
 #Plot log2 heatmap
 heatmap_data_log2 %>% pheatmap(cluster_cols = F)
 ```
 
 ##### Substract Mean
 
-```{r fig.asp = 1.2, fig.width = 12}
+```{r}
 ## Substract the mean
 heatmap_data_meanSubstract <- heatmap_data_log2 - rowMeans((heatmap_data_log2))
+```
+
+```{r fig.asp = 1.2, fig.width = 9, fig.align='center'}
 #Plot  heatmap
 heatmap_data_meanSubstract %>% pheatmap(cluster_cols = F)
 ```
 
 ##### zScores (see also rlog transformed scaled)
 
-```{r fig.asp = 1.2, fig.width = 12}
-heatmap_data_zscores <- heatmap_data_meanSubstract/rowSds(as.matrix(heatmap_data_log2))
+```{r}
+heatmap_data_zscores <- heatmap_data_meanSubstract/
+  rowSds(as.matrix(heatmap_data_log2))
+```
 
+```{r fig.asp = 1.2, fig.width = 9, fig.align='center'}
 heatmap_data_zscores %>%
   pheatmap(cluster_cols = F)
 ```
@@ -336,22 +435,31 @@ colnames(heatmap_rlog.df) <- make.unique(names(heatmap_rlog.df))
 # add rownames as column
 heatmap_rlog.df$Gene <- row.names(heatmap_rlog.df)
 heatmap_rlog.df <- heatmap_rlog.df %>% relocate(Gene, .before = Normal)
-head(heatmap_rlog.df)
 ```
+
 
 ```{r}
 # Merge total data frame and heatmap_norm.df
 data_frame_merge_rlog <- semi_join(heatmap_rlog.df, total_up_down, 
                           by = 'Gene', all = F)
-data_frame_merge_rlog  <- data_frame_merge_rlog[-c(1)]
-head(data_frame_merge_rlog)
+```
+
+```{r}
+# Only add the Gene Name as Rowname, delete the Entrez ID for better overview
+df <- separate(data_frame_merge_rlog, Gene, sep="__", into = c("Gene_Name", "Entrez_ID"))
+head(df)
+data_frame <- df %>% remove_rownames %>% column_to_rownames(var="Gene_Name")
+data_frame_merge_rlog <- select(data_frame, select = -c(Entrez_ID))
 ```
 
 ##### Heatmap of rlog transformed values
 
-```{r fig.asp = 1.2, fig.width = 12}
+```{r}
 #Convert to Matrix
 data_frame_merge_rlog <- as.matrix(data_frame_merge_rlog)
+```
+
+```{r fig.asp = 1, fig.width = 9, fig.align='center'}
 #Plot
 data_frame_merge_rlog %>% pheatmap(cluster_cols = F)
 ```
@@ -361,16 +469,117 @@ data_frame_merge_rlog %>% pheatmap(cluster_cols = F)
 Erzeugung einer rlog_scaled Matrix:
 
 ```{r}
-data_frame_merge_rlog_scaled <- t(scale(t(data_frame_merge_rlog), center = T, scale =T))
+data_frame_merge_rlog_scaled <- t(scale(t(data_frame_merge_rlog), 
+                                        center = T, 
+                                        scale =T))
 ```
 
 Erzeugung der Heatmap
 
-```{r fig.asp = 1.2, fig.width = 12}
+```{r fig.asp = 1, fig.width = 9, fig.align='center'}
+#Plot
 data_frame_merge_rlog_scaled  %>%
   pheatmap(cluster_cols = F)
 ```
 
+```{r}
+# Definition of row clusters (not necessary, is already pheatmap default)
+heatmap_rowClusters <- data_frame_merge_rlog_scaled %>%
+  dist() %>%
+  hclust()
+```
+
+```{r fig.asp = 1, fig.width = 9, fig.align='center'}
+#Plot
+data_frame_merge_rlog_scaled %>%
+  pheatmap(cluster_cols = F,
+           cluster_rows = heatmap_rowClusters)
+```
+
+```{r}
+#Generate correlation matrix
+rows_cor <- data_frame_merge_rlog_scaled %>%
+  t() %>%
+  cor() 
+# Convert to distance
+heatmap_rowClusters_cor <- as.dist(1-rows_cor) %>%
+  hclust()
+```
+
+```{r fig.asp = 1, fig.width = 9, fig.align='center'}
+#Plot
+data_frame_merge_rlog_scaled %>%
+  pheatmap(cluster_cols = F,
+           cluster_rows = heatmap_rowClusters_cor)
+```
+
+```{r}
+#Define breaks
+symmetric_breaks <- seq(-max(abs(data_frame_merge_rlog_scaled)), 
+                        max(abs(data_frame_merge_rlog_scaled)), 
+                        length.out = 101)
+```
+
+```{r fig.asp = 1.2, fig.width = 8, message = F}
+# Cluster genes using "dendextend" dendrogramm
+my_hclust_gene <- hclust(dist(data_frame_merge_rlog_scaled),
+                         method = "complete")
+ 
+# install if necessary
+#install.packages("dendextend")
+ 
+# load package
+library(dendextend)
+```
+
+
+```{r fig.asp = 0.9, fig.width = 9, message = F, fig.align='center'}
+as.dendrogram(my_hclust_gene) %>%
+  plot(horiz = TRUE)
+```
+
+```{r}
+#Row annotation using dendrogramm:
+my_gene_col <- cutree(tree = as.dendrogram(my_hclust_gene), k = 2)
+#Cluster annotation (one or two)
+my_gene_col <- data.frame(cluster = ifelse(test = my_gene_col == 1, 
+                                           yes = "cluster 1", 
+                                           no = "cluster 2"))
+```
+
+```{r}
+# Column annotation using Sample type
+my_sample_col <- data.frame(Sample = rep(c("Normal", "Tumor"), c(25,25)))
+row.names(my_sample_col) <- colnames(data_frame_merge_rlog_scaled)
+```
+
+```{r fig.asp = 1, fig.width = 9, fig.align='center'}
+#Create final Heatmap
+pheatmap(data_frame_merge_rlog_scaled, 
+         annotation_row = my_gene_col,
+         annotation_col = my_sample_col,
+         breaks = symmetric_breaks,
+         cluster_cols = T,
+         cutree_rows = 2,
+         cutree_cols = 2)
+```
+
+```{r}
+#Create final Heatmap pdf
+pheatmap(data_frame_merge_rlog_scaled, 
+         annotation_row = my_gene_col,
+         annotation_col = my_sample_col,
+         breaks = symmetric_breaks,
+         cluster_cols = T,
+         cutree_rows = 2,
+         cutree_cols = 2,
+         filename = "heatmap.pdf",
+         width = 11.69,
+         height = 8.27)
+```
+
+
+### Erklärung
 Scaling (oder Standardization) transformiert die Daten, der Mean/Durchschnitt wird auf 0 und die Standard-Abweichung auf 1 gesetzt. Dies entspricht den z scores. Dies eignet sich be Werten mit hoher Varianz und Extremweren, da diese sonst die Heatmap dominieren (z.B. UMOD Gen).
 
 ## Citations
